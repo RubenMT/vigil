@@ -789,30 +789,91 @@
 
 <script>
 // ══════════════════════════════════════════════
-//  MOCK STATE
+//  AES-256-GCM ENCRYPTION (Web Crypto API)
+//  All encryption runs in the browser.
+//  The server NEVER sees the passphrase or plaintext.
 // ══════════════════════════════════════════════
-const MOCK_VIGIL = {
-  id: 'VGL-A3F92K',
-  title: 'My wishes for my family',
-  owner_email: 'ruben@example.com',
-  body: `To whoever reads this — thank you for waiting.\n\nBy the time you open this, you will know what I wanted to say. I trust you with these words because I trust you with everything.\n\nTake care of each other. That's the only instruction that matters.`,
-  passphrase: 'blue mountain 1987 forever',
-  recipients: [
-    { name: 'Maria', email: 'maria@example.com', requested_at: Date.now() - (18 * 60 * 60 * 1000), timer_done_at: null },
-    { name: 'Jordi', email: 'jordi@example.com', requested_at: null, timer_done_at: null },
-  ]
+
+async function deriveKey(passphrase) {
+  const raw = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: new TextEncoder().encode('vigil-salt'), iterations: 100000, hash: 'SHA-256' },
+    raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptDocument(text, passphrase) {
+  const key = await deriveKey(passphrase);
+  const iv  = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, key, new TextEncoder().encode(text)
+  );
+  // Pack iv + ciphertext into a single base64 string
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptDocument(base64Blob, passphrase) {
+  const combined = Uint8Array.from(atob(base64Blob), c => c.charCodeAt(0));
+  const iv        = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  const key = await deriveKey(passphrase);
+  try {
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  } catch {
+    return null; // wrong passphrase
+  }
+}
+
+// Hash passphrase for server-side verification (never store raw passphrase)
+async function hashPassphrase(passphrase) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('vigil-ph:' + passphrase));
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+
+// ══════════════════════════════════════════════
+//  MOCK STATE
+//  encrypted_body is a real AES-256 encrypted blob.
+//  In production this comes from / goes to Supabase.
+// ══════════════════════════════════════════════
+let state = {
+  vigil: null,           // set after create or lookup
+  currentRecipientEmail: null,
+  recipients: [],        // staging list for create flow
+  countdownInterval: null,
+  alertLog: []
 };
 
-let state = {
-  vigil: JSON.parse(JSON.stringify(MOCK_VIGIL)),
-  currentRecipientEmail: null,
-  recipients: [],  // for create flow
-  countdownInterval: null,
-  alertLog: [
+// Demo vigil — pre-encrypted at boot so the open/decrypt flow works
+const DEMO_PASSPHRASE = 'blue mountain 1987 forever';
+const DEMO_PLAINTEXT  = `To whoever reads this — thank you for waiting.\n\nBy the time you open this, you will know what I wanted to say. I trust you with these words because I trust you with everything.\n\nTake care of each other. That's the only instruction that matters.`;
+
+async function initDemo() {
+  const encrypted_body = await encryptDocument(
+    JSON.stringify({ title: 'My wishes for my family', body: DEMO_PLAINTEXT }),
+    DEMO_PASSPHRASE
+  );
+  const passphrase_hash = await hashPassphrase(DEMO_PASSPHRASE);
+  state.vigil = {
+    id: 'VGL-A3F92K',
+    owner_email: 'ruben@example.com',
+    encrypted_body,
+    passphrase_hash,
+    recipients: [
+      { name: 'Maria', email: 'maria@example.com', requested_at: Date.now() - (18 * 60 * 60 * 1000), timer_done_at: null },
+      { name: 'Jordi', email: 'jordi@example.com', requested_at: null, timer_done_at: null },
+    ]
+  };
+  state.alertLog = [
     { dot: 'dot-warn', text: 'Maria (maria@example.com) requested access', time: '18 hours ago' },
-    { dot: 'dot-ok',   text: 'Vigil created and sealed', time: '3 days ago' },
-  ]
-};
+    { dot: 'dot-ok',   text: 'Vigil VGL-A3F92K created and sealed',        time: '3 days ago' },
+  ];
+}
 
 // ══════════════════════════════════════════════
 //  VIEW ROUTING
@@ -820,7 +881,6 @@ let state = {
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
-
   if (name === 'dashboard') renderDashboard();
 }
 
@@ -831,7 +891,6 @@ function addRecipient() {
   const name  = document.getElementById('r-name').value.trim();
   const email = document.getElementById('r-email').value.trim();
   if (!name || !email) return;
-
   state.recipients.push({ name, email });
   document.getElementById('r-name').value  = '';
   document.getElementById('r-email').value = '';
@@ -854,28 +913,31 @@ function renderRecipientTags() {
   `).join('');
 }
 
-function sealVigil() {
-  const title   = document.getElementById('doc-title').value.trim();
-  const body    = document.getElementById('doc-body').value.trim();
-  const email   = document.getElementById('owner-email').value.trim();
-  const pass    = document.getElementById('passphrase').value.trim();
+async function sealVigil() {
+  const title = document.getElementById('doc-title').value.trim();
+  const body  = document.getElementById('doc-body').value.trim();
+  const email = document.getElementById('owner-email').value.trim();
+  const pass  = document.getElementById('passphrase').value.trim();
 
-  if (!title || !body || !email || !pass) {
-    alert('Please fill in all fields before sealing.');
-    return;
-  }
-  if (state.recipients.length === 0) {
-    alert('Add at least one recipient.');
-    return;
-  }
+  if (!title || !body || !email || !pass) { alert('Please fill in all fields before sealing.'); return; }
+  if (state.recipients.length === 0) { alert('Add at least one recipient.'); return; }
+
+  const btn = document.querySelector('.seal-box .btn-gold');
+  btn.textContent = 'Encrypting…'; btn.disabled = true;
+
+  // Encrypt in browser — server will never see plaintext or passphrase
+  const payload      = JSON.stringify({ title, body });
+  const encrypted_body  = await encryptDocument(payload, pass);
+  const passphrase_hash = await hashPassphrase(pass);
 
   const id = 'VGL-' + Array.from({length:6}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
 
-  // Store in mock state
+  // In production: POST /api/vigils with { id, owner_email, encrypted_body, passphrase_hash, recipients }
   state.vigil = {
-    id, title, body, owner_email: email, passphrase: pass,
+    id, owner_email: email, encrypted_body, passphrase_hash,
     recipients: state.recipients.map(r => ({ ...r, requested_at: null, timer_done_at: null }))
   };
+  state.alertLog = [{ dot: 'dot-ok', text: `Vigil ${id} created and sealed`, time: 'Just now' }];
 
   document.getElementById('new-vgl-id').textContent = id;
   document.getElementById('sealed-recipients').textContent = state.recipients.map(r => r.name).join(', ');
@@ -893,7 +955,9 @@ function lookupVigil() {
   const email   = document.getElementById('open-email').value.trim().toLowerCase();
 
   if (!inputId || !email) { alert('Enter both a Vigil ID and your email.'); return; }
-  if (inputId !== state.vigil.id) { alert('Vigil not found. Check the ID and try again.'); return; }
+
+  // In production: GET /api/vigils/:id/status
+  if (!state.vigil || inputId !== state.vigil.id) { alert('Vigil not found. Check the ID and try again.'); return; }
 
   const recipient = state.vigil.recipients.find(r => r.email.toLowerCase() === email);
   if (!recipient) { alert('Your email is not on the authorized list for this Vigil.'); return; }
@@ -908,16 +972,14 @@ function renderOpenStatus() {
   const v = state.vigil;
   document.getElementById('status-vgl-id').textContent = v.id;
 
-  // Render recipient timer rows
   document.getElementById('recipient-timers').innerHTML = v.recipients.map(r => {
     let badge, badgeClass;
     if (!r.requested_at) {
       badge = 'Waiting'; badgeClass = 'badge-pending';
-    } else if (!r.timer_done_at && (Date.now() - r.requested_at < 24*60*60*1000)) {
-      const remaining = 24*60*60*1000 - (Date.now() - r.requested_at);
-      badge = formatMs(remaining); badgeClass = 'badge-counting';
     } else {
-      badge = '✓ Ready'; badgeClass = 'badge-done';
+      const remaining = 24*60*60*1000 - (Date.now() - r.requested_at);
+      if (remaining > 0) { badge = formatMs(remaining); badgeClass = 'badge-counting'; }
+      else { badge = '✓ Ready'; badgeClass = 'badge-done'; }
     }
     return `
       <div class="recipient-timer">
@@ -926,21 +988,19 @@ function renderOpenStatus() {
       </div>`;
   }).join('');
 
-  const me = state.vigil.recipients.find(r => r.email.toLowerCase() === state.currentRecipientEmail);
+  const me = v.recipients.find(r => r.email.toLowerCase() === state.currentRecipientEmail);
+  const allDone = v.recipients.every(r => r.requested_at && (Date.now() - r.requested_at >= 24*60*60*1000));
 
-  // Show appropriate section
   document.getElementById('request-section').classList.add('hidden');
   document.getElementById('counting-section').classList.add('hidden');
   document.getElementById('unlock-section').classList.add('hidden');
   document.getElementById('document-section').classList.add('hidden');
 
-  const allDone = state.vigil.recipients.every(r => r.requested_at && (r.timer_done_at || (Date.now() - r.requested_at >= 24*60*60*1000)));
-
   if (allDone) {
     document.getElementById('unlock-section').classList.remove('hidden');
   } else if (!me.requested_at) {
     document.getElementById('request-section').classList.remove('hidden');
-  } else if (!me.timer_done_at) {
+  } else {
     document.getElementById('counting-section').classList.remove('hidden');
     startCountdown(me.requested_at);
   }
@@ -949,36 +1009,40 @@ function renderOpenStatus() {
 function requestAccess() {
   const me = state.vigil.recipients.find(r => r.email.toLowerCase() === state.currentRecipientEmail);
   me.requested_at = Date.now();
-
-  // Add to alert log
+  // In production: POST /api/vigils/:id/request — logs timestamp, emails owner, starts 24h timer
   state.alertLog.unshift({ dot: 'dot-warn', text: `${me.name} (${me.email}) requested access`, time: 'Just now' });
-
   renderOpenStatus();
-  if (document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
 }
 
-function unlockVigil() {
+async function unlockVigil() {
   const pass = document.getElementById('unlock-passphrase').value.trim();
-  if (pass !== state.vigil.passphrase) {
+  const btn  = document.querySelector('#unlock-section .btn-gold');
+  btn.textContent = 'Decrypting…'; btn.disabled = true;
+
+  // In production: GET /api/vigils/:id/document returns encrypted_body
+  // Decryption happens here in the browser — server never sees the passphrase
+  const plaintext = await decryptDocument(state.vigil.encrypted_body, pass);
+
+  btn.textContent = 'Unlock'; btn.disabled = false;
+
+  if (!plaintext) {
     alert('Incorrect passphrase. This was shared with you by the owner — Vigil does not hold it.');
     return;
   }
+
+  const doc = JSON.parse(plaintext);
   document.getElementById('unlock-section').classList.add('hidden');
   document.getElementById('document-section').classList.remove('hidden');
   document.getElementById('document-section').style.display = 'block';
-  document.getElementById('revealed-title').textContent = state.vigil.title;
-  document.getElementById('revealed-body').textContent = state.vigil.body;
+  document.getElementById('revealed-title').textContent = doc.title;
+  document.getElementById('revealed-body').textContent  = doc.body;
 }
 
 function startCountdown(requestedAt) {
   if (state.countdownInterval) clearInterval(state.countdownInterval);
   function tick() {
     const remaining = 24*60*60*1000 - (Date.now() - requestedAt);
-    if (remaining <= 0) {
-      clearInterval(state.countdownInterval);
-      document.getElementById('countdown-display').textContent = '00:00:00';
-      return;
-    }
+    if (remaining <= 0) { clearInterval(state.countdownInterval); document.getElementById('countdown-display').textContent = '00:00:00'; return; }
     document.getElementById('countdown-display').textContent = formatMs(remaining);
   }
   tick();
@@ -997,12 +1061,13 @@ function formatMs(ms) {
 //  OWNER DASHBOARD
 // ══════════════════════════════════════════════
 function renderDashboard() {
+  if (!state.vigil) return;
   const v = state.vigil;
   document.getElementById('dash-vgl-id').textContent = v.id;
-  document.getElementById('dash-title').textContent = v.title || '—';
+  document.getElementById('dash-title').textContent  = '(encrypted)';
 
-  const anyActive = v.recipients.some(r => r.requested_at && !r.timer_done_at);
-  const banner = document.getElementById('warning-banner');
+  const anyActive = v.recipients.some(r => r.requested_at && (Date.now() - r.requested_at < 24*60*60*1000));
+  const banner    = document.getElementById('warning-banner');
   if (anyActive) {
     banner.classList.remove('hidden');
     const who = v.recipients.filter(r => r.requested_at).map(r => r.name).join(', ');
@@ -1011,7 +1076,6 @@ function renderDashboard() {
     banner.classList.add('hidden');
   }
 
-  // Recipient rows with live timers
   document.getElementById('dash-recipient-timers').innerHTML = v.recipients.map(r => {
     let badge, badgeClass;
     if (!r.requested_at) {
@@ -1028,7 +1092,6 @@ function renderDashboard() {
       </div>`;
   }).join('');
 
-  // Alert log
   document.getElementById('alert-log').innerHTML = state.alertLog.map(e => `
     <div class="log-entry">
       <div class="log-dot ${e.dot}"></div>
@@ -1037,7 +1100,6 @@ function renderDashboard() {
   `).join('');
 }
 
-// Live dashboard tick
 setInterval(() => {
   if (document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
 }, 1000);
@@ -1045,11 +1107,11 @@ setInterval(() => {
 // ══════════════════════════════════════════════
 //  CANCEL MODAL
 // ══════════════════════════════════════════════
-function showCancelModal() { document.getElementById('cancel-modal').classList.add('open'); }
+function showCancelModal()  { document.getElementById('cancel-modal').classList.add('open'); }
 function closeCancelModal() { document.getElementById('cancel-modal').classList.remove('open'); }
 
 function cancelVigil() {
-  // Full reset — wipe all timestamps
+  // Full reset — wipe all timestamps. In production: POST /api/vigils/:id/cancel
   state.vigil.recipients.forEach(r => { r.requested_at = null; r.timer_done_at = null; });
   state.alertLog.unshift({ dot: 'dot-ok', text: 'Owner cancelled all timers — Vigil resealed', time: 'Just now' });
   closeCancelModal();
@@ -1059,8 +1121,7 @@ function cancelVigil() {
 // ══════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════
-// Simulate Maria's timer already running (18h in, 6h left)
-state.vigil.recipients[0].requested_at = Date.now() - (18 * 60 * 60 * 1000);
+initDemo();
 </script>
 </body>
 </html>
