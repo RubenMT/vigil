@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigil — A sealed document vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink:        #0f0e0c;
+    --gold:       #b8952a;
+    --gold-light: #d4ae4a;
+    --muted:      #6b6457;
+    --surface:    #faf9f7;
+    --border:     #e2ddd6;
+    --warn:       #c0392b;
+    --warn-bg:    #fdf2f2;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--surface);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ── VIEWS ── */
+  .view { display: none; min-height: 100vh; }
+  .view.active { display: flex; flex-direction: column; }
+
+  /* ── NAV ── */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 40px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    user-select: none;
+  }
+  .logo span.vigil { color: var(--gold); }
+  .logo span.online { color: var(--muted); font-style: italic; font-weight: 300; }
+  .candle { margin-right: 8px; }
+
+  nav .nav-links { display: flex; gap: 24px; align-items: center; }
+  nav .nav-links button {
+    background: none;
+    border: none;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 6px 0;
+    transition: color 0.2s;
+  }
+  nav .nav-links button:hover { color: var(--ink); }
+  nav .nav-links .btn-primary {
+    background: var(--gold);
+    color: white;
+    padding: 8px 18px;
+    border-radius: 4px;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  nav .nav-links .btn-primary:hover { background: var(--gold-light); color: var(--ink); }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 24px;
+    border-radius: 4px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+  .btn-gold { background: var(--gold); color: white; }
+  .btn-gold:hover { background: var(--gold-light); color: var(--ink); }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--ink); }
+  .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-danger { background: var(--warn); color: white; }
+  .btn-danger:hover { opacity: 0.9; }
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── INPUTS ── */
+  input[type="text"], input[type="email"], textarea, input[type="password"] {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: var(--ink);
+    background: white;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, textarea:focus { border-color: var(--gold); }
+  textarea { resize: vertical; min-height: 160px; }
+  label { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.03em; text-transform: uppercase; }
+  .field { margin-bottom: 20px; }
+  .field-hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+
+  /* ── HOME VIEW ── */
+  #view-home {
+    flex-direction: column;
+  }
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 80px 40px 60px;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .hero-seal {
+    font-size: 48px;
+    margin-bottom: 28px;
+    opacity: 0.7;
+  }
+  .hero h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 48px;
+    font-weight: 400;
+    line-height: 1.15;
+    color: var(--ink);
+    margin-bottom: 18px;
+  }
+  .hero h1 em { font-style: italic; color: var(--gold); }
+  .hero p {
+    font-size: 16px;
+    color: var(--muted);
+    max-width: 480px;
+    margin-bottom: 36px;
+    line-height: 1.7;
+  }
+  .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  .how-it-works {
+    background: white;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 60px 40px;
+  }
+  .how-it-works h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 28px;
+    font-weight: 400;
+    text-align: center;
+    margin-bottom: 48px;
+    color: var(--ink);
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 32px;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  .step { text-align: center; }
+  .step-icon { font-size: 28px; margin-bottom: 14px; }
+  .step h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--ink);
+  }
+  .step p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  .trust-bar {
+    background: var(--ink);
+    color: white;
+    padding: 28px 40px;
+    text-align: center;
+  }
+  .trust-bar p {
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+    max-width: 700px;
+    margin: 0 auto;
+    line-height: 1.7;
+  }
+  .trust-bar p strong { color: var(--gold-light); font-weight: 500; }
+
+  /* ── CREATE VIEW ── */
+  #view-create {
+    align-items: center;
+    padding: 48px 20px;
+  }
+  .create-container {
+    width: 100%;
+    max-width: 620px;
+  }
+  .view-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 32px;
+    font-weight: 400;
+    margin-bottom: 6px;
+    color: var(--ink);
+  }
+  .view-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+
+  .card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .recipients-list { margin-bottom: 14px; }
+  .recipient-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: var(--ink);
+    margin: 4px 4px 4px 0;
+  }
+  .recipient-tag .name { font-weight: 500; }
+  .recipient-tag .email { color: var(--muted); font-size: 12px; }
+  .recipient-tag .remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 0 0 4px;
+    transition: color 0.2s;
+  }
+  .recipient-tag .remove:hover { color: var(--warn); }
+
+  .add-recipient { display: flex; gap: 8px; align-items: flex-end; }
+  .add-recipient .field { margin-bottom: 0; flex: 1; }
+
+  .seal-box {
+    background: var(--ink);
+    border-radius: 6px;
+    padding: 24px;
+    text-align: center;
+    color: white;
+  }
+  .seal-box p { font-size: 13px; color: rgba(255,255,255,0.6); margin-bottom: 16px; line-height: 1.6; }
+  .seal-box .passphrase-hint { font-size: 12px; color: rgba(255,255,255,0.45); margin-top: 12px; }
+
+  /* ── SEALED CONFIRMATION ── */
+  .sealed-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 36px;
+    text-align: center;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+  .sealed-icon { font-size: 40px; margin-bottom: 20px; }
+  .sealed-card h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 28px;
+    font-weight: 400;
+    margin-bottom: 10px;
+  }
+  .sealed-card p { font-size: 14px; color: var(--muted); margin-bottom: 20px; line-height: 1.7; }
+  .vgl-id {
+    display: inline-block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 20px;
+    font-size: 22px;
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    margin-bottom: 20px;
+  }
+  .passphrase-reminder {
+    background: #fffbf0;
+    border: 1px solid #f0d878;
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #7a6210;
+    margin-top: 16px;
+    text-align: left;
+    line-height: 1.6;
+  }
+  .passphrase-reminder strong { font-weight: 600; }
+
+  /* ── OPEN VIEW ── */
+  #view-open {
+    align-items: center;
+    padding: 48px 20px;
+  }
+  .open-container { width: 100%; max-width: 540px; }
+
+  /* Recipient timer card */
+  .recipient-timer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 10px;
+    background: white;
+  }
+  .recipient-timer .rname { font-weight: 500; font-size: 14px; }
+  .recipient-timer .remail { font-size: 12px; color: var(--muted); }
+  .timer-badge {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .badge-pending { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+  .badge-counting { background: #fff8e6; color: #8a6500; border: 1px solid #f0d878; }
+  .badge-done { background: #f0faf0; color: #2a7a2a; border: 1px solid #a8d8a8; }
+
+  .access-form { margin-top: 24px; }
+
+  /* Document reveal */
+  .document-reveal {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 28px;
+    margin-top: 20px;
+  }
+  .document-reveal h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    font-weight: 400;
+    margin-bottom: 16px;
+    color: var(--gold);
+  }
+  .document-body { font-size: 15px; line-height: 1.8; color: var(--ink); white-space: pre-wrap; }
+
+  /* ── OWNER DASHBOARD ── */
+  #view-dashboard {
+    align-items: center;
+    padding: 48px 20px;
+  }
+  .dashboard-container { width: 100%; max-width: 660px; }
+
+  .warning-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: var(--warn-bg);
+    border: 1px solid #e8b4b4;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  .warning-banner p { font-size: 14px; color: var(--warn); font-weight: 500; }
+  .warning-banner .warn-detail { font-weight: 400; font-size: 13px; }
+
+  .log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .log-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gold);
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+  .log-dot.dot-warn { background: var(--warn); }
+  .log-dot.dot-ok { background: #2a7a2a; }
+  .log-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+  .log-time { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .status-summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .status-pill {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--muted);
+  }
+  .status-pill.active { background: #fff8e6; color: #8a6500; border-color: #f0d878; }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,14,12,0.6);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: white;
+    border-radius: 8px;
+    padding: 32px;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  }
+  .modal h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 24px;
+    font-weight: 400;
+    margin-bottom: 10px;
+  }
+  .modal p { font-size: 14px; color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* ── FOOTER ── */
+  footer {
+    margin-top: auto;
+    padding: 24px 40px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── UTIL ── */
+  .hidden { display: none !important; }
+  .text-center { text-align: center; }
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+
+  @media (max-width: 600px) {
+    nav { padding: 16px 20px; }
+    .hero { padding: 48px 20px 40px; }
+    .hero h1 { font-size: 36px; }
+    .how-it-works { padding: 40px 20px; }
+    footer { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     HOME VIEW
+═══════════════════════════════════════════ -->
+<div id="view-home" class="view active">
+  <nav>
+    <div class="logo" onclick="showView('home')">
+      <span class="candle">■</span><span class="vigil">Vigil</span><span class="online">Online</span>
+    </div>
+    <div class="nav-links">
+      <button onclick="showView('open')">Open a Vigil</button>
+      <button onclick="showView('dashboard')">Owner login</button>
+      <button class="btn-primary" onclick="showView('create')">Create a Vigil</button>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-seal">■</div>
+    <h1>Your words, sealed until <em>they're ready</em> to be read</h1>
+    <p>Write what matters. Choose who receives it. Vigil keeps it locked until all of them consent — and a 24-hour window gives you time to cancel.</p>
+    <div class="hero-actions">
+      <button class="btn btn-gold" onclick="showView('create')">Create a Vigil</button>
+      <button class="btn btn-outline" onclick="showView('open')">Open a Vigil</button>
+    </div>
+  </div>
+
+  <div class="how-it-works">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-icon">✍️</div>
+        <h3>Write &amp; seal</h3>
+        <p>Write your document. Add the people authorized to read it. Seal it with a passphrase only you control.</p>
+      </div>
+      <div class="step">
+        <div class="step-icon">🔑</div>
+        <h3>Share the ID</h3>
+        <p>Give your recipients the Vigil ID — by text, call, or letter. Share your passphrase in person or physically. Vigil never holds it.</p>
+      </div>
+      <div class="step">
+        <div class="step-icon">⏳</div>
+        <h3>24-hour window</h3>
+        <p>Every access request triggers an alert to you and starts a non-negotiable 24-hour countdown. You can cancel at any point.</p>
+      </div>
+      <div class="step">
+        <div class="step-icon">📄</div>
+        <h3>Opens when it should</h3>
+        <p>Only when every recipient has requested access and all timers have completed does the document unseal.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="trust-bar">
+    <p>Your document is encrypted before it leaves your device. We store only the locked version — <strong>mathematically unreadable without a passphrase we never see.</strong> Even if our servers were breached tomorrow, your words would remain private. And if we ever shut down, we'll return your encrypted document 90 days before we close.</p>
+  </div>
+
+  <footer>
+    <span>■ VigilOnline — vigilonline.app</span>
+    <span>Not a legal will. A document vault built on consent.</span>
+  </footer>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     CREATE VIEW
+═══════════════════════════════════════════ -->
+<div id="view-create" class="view">
+  <nav>
+    <div class="logo" onclick="showView('home')">
+      <span class="candle">■</span><span class="vigil">Vigil</span><span class="online">Online</span>
+    </div>
+    <div class="nav-links">
+      <button onclick="showView('home')">← Back</button>
+    </div>
+  </nav>
+
+  <!-- Step 1: Write -->
+  <div id="create-step-write" style="display:flex; align-items:center; padding:48px 20px; flex:1;">
+    <div class="create-container">
+      <div class="view-title">Create a Vigil</div>
+      <div class="view-subtitle">Write your document, add recipients, then seal it.</div>
+
+      <div class="card">
+        <div class="card-title">Your document</div>
+        <div class="field">
+          <label>Title</label>
+          <input type="text" id="doc-title" placeholder="e.g. My wishes for my family">
+        </div>
+        <div class="field">
+          <label>Document</label>
+          <textarea id="doc-body" placeholder="Write what you want your recipients to read when the time comes..."></textarea>
+        </div>
+        <div class="field">
+          <label>Your email (for alerts)</label>
+          <input type="email" id="owner-email" placeholder="you@example.com">
+          <div class="field-hint">You'll receive an alert every time someone requests access.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Recipients</div>
+        <div class="recipients-list" id="recipients-list"></div>
+        <div class="add-recipient">
+          <div class="field" style="flex:1;">
+            <label>Name</label>
+            <input type="text" id="r-name" placeholder="Maria">
+          </div>
+          <div class="field" style="flex:2;">
+            <label>Email</label>
+            <input type="email" id="r-email" placeholder="maria@example.com">
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="addRecipient()" style="margin-bottom:20px;">Add</button>
+        </div>
+        <div class="field-hint">All recipients must request access before the document unlocks.</div>
+      </div>
+
+      <div class="seal-box">
+        <p>Choose a passphrase you can share with your recipients in person. You'll never need to change it unless you want to.</p>
+        <div class="field" style="margin-bottom:12px;">
+          <label style="color:rgba(255,255,255,0.5);">Passphrase</label>
+          <input type="text" id="passphrase" placeholder="e.g. blue mountain 1987 forever" style="background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.2); color:white;">
+        </div>
+        <button class="btn btn-gold" onclick="sealVigil()" style="width:100%; justify-content:center;">■ Seal my Vigil</button>
+        <div class="passphrase-hint">Share this passphrase off-system — in person, physically, or verbally. Never in the same message as your Vigil ID.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Sealed confirmation -->
+  <div id="create-step-sealed" class="hidden" style="display:flex; align-items:center; justify-content:center; padding:48px 20px; flex:1;">
+    <div class="sealed-card">
+      <div class="sealed-icon">■</div>
+      <h2>Your Vigil is sealed</h2>
+      <p>Share this ID with your recipients. They'll need it to request access.</p>
+      <div class="vgl-id" id="new-vgl-id">VGL-······</div>
+      <p style="font-size:13px; color:var(--muted);">Recipients: <span id="sealed-recipients"></span></p>
+      <div class="passphrase-reminder">
+        <strong>Don't forget your passphrase.</strong> Share it with your recipients in person — never digitally alongside the Vigil ID. Vigil does not hold it and cannot recover it.
+      </div>
+      <div style="display:flex; gap:10px; margin-top:24px; justify-content:center; flex-wrap:wrap;">
+        <button class="btn btn-outline" onclick="showView('dashboard')">Go to Owner Dashboard</button>
+        <button class="btn btn-outline" onclick="showView('home')">Home</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     OPEN VIEW
+═══════════════════════════════════════════ -->
+<div id="view-open" class="view">
+  <nav>
+    <div class="logo" onclick="showView('home')">
+      <span class="candle">■</span><span class="vigil">Vigil</span><span class="online">Online</span>
+    </div>
+    <div class="nav-links">
+      <button onclick="showView('home')">← Back</button>
+    </div>
+  </nav>
+
+  <div id="open-container" style="display:flex; align-items:center; padding:48px 20px; flex:1;">
+    <div class="open-container">
+      <div class="view-title">Open a Vigil</div>
+      <div class="view-subtitle">Enter the Vigil ID and your email to check status or request access.</div>
+
+      <!-- Lookup form -->
+      <div id="open-lookup" class="card">
+        <div class="field">
+          <label>Vigil ID</label>
+          <input type="text" id="open-vgl-id" placeholder="VGL-XXXXXX" style="text-transform:uppercase; letter-spacing:0.1em; font-size:18px;">
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" id="open-email" placeholder="you@example.com">
+        </div>
+        <button class="btn btn-gold" onclick="lookupVigil()" style="width:100%; justify-content:center;">Check status</button>
+      </div>
+
+      <!-- Vigil status -->
+      <div id="open-status" class="hidden">
+        <div class="card">
+          <div class="card-title">Vigil status — <span id="status-vgl-id"></span></div>
+          <div id="recipient-timers"></div>
+        </div>
+
+        <!-- Request access -->
+        <div id="request-section" class="card hidden">
+          <div class="card-title">Request access</div>
+          <p style="font-size:14px; color:var(--muted); margin-bottom:16px; line-height:1.6;">Requesting access will alert the owner and start your 24-hour countdown. This cannot be undone by you — only the owner can cancel.</p>
+          <button class="btn btn-gold" onclick="requestAccess()" style="width:100%; justify-content:center;">Request access</button>
+        </div>
+
+        <!-- Already requested -->
+        <div id="counting-section" class="card hidden">
+          <div class="card-title">Your timer</div>
+          <p style="font-size:14px; color:var(--muted); margin-bottom:12px;">Your 24-hour countdown is running. The owner has been notified.</p>
+          <div style="text-align:center;">
+            <div style="font-family:'Cormorant Garamond',serif; font-size:42px; color:var(--gold); letter-spacing:0.05em;" id="countdown-display">23:59:59</div>
+            <div style="font-size:12px; color:var(--muted); margin-top:4px;">remaining</div>
+          </div>
+        </div>
+
+        <!-- Unlock section (all timers done) -->
+        <div id="unlock-section" class="card hidden">
+          <div class="card-title">Unlock your Vigil</div>
+          <p style="font-size:14px; color:var(--muted); margin-bottom:16px; line-height:1.6;">Your vigil is ready to open. Enter the passphrase your trusted person shared with you.</p>
+          <div class="field">
+            <label>Passphrase</label>
+            <input type="text" id="unlock-passphrase" placeholder="Enter passphrase">
+            <div class="field-hint">This was given to you by the owner — not by Vigil. We don't have it.</div>
+          </div>
+          <button class="btn btn-gold" onclick="unlockVigil()" style="width:100%; justify-content:center;">Unlock</button>
+        </div>
+
+        <!-- Document revealed -->
+        <div id="document-section" class="hidden document-reveal">
+          <h3 id="revealed-title">Document title</h3>
+          <div class="document-body" id="revealed-body"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     OWNER DASHBOARD VIEW
+═══════════════════════════════════════════ -->
+<div id="view-dashboard" class="view">
+  <nav>
+    <div class="logo" onclick="showView('home')">
+      <span class="candle">■</span><span class="vigil">Vigil</span><span class="online">Online</span>
+    </div>
+    <div class="nav-links">
+      <button onclick="showView('home')">← Back</button>
+    </div>
+  </nav>
+
+  <div style="display:flex; align-items:center; padding:48px 20px; flex:1;">
+    <div class="dashboard-container">
+      <div class="view-title">Owner Dashboard</div>
+      <div class="view-subtitle">Monitor access requests and cancel if needed.</div>
+
+      <!-- Warning banner (shown when timers active) -->
+      <div id="warning-banner" class="warning-banner hidden">
+        <div>
+          <p>■ Access in progress</p>
+          <p class="warn-detail" id="warning-detail">One or more recipients have requested access.</p>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="showCancelModal()">Cancel &amp; reseal</button>
+      </div>
+
+      <!-- Vigil info -->
+      <div class="card">
+        <div class="card-title">Your active Vigil</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+          <div>
+            <div style="font-family:'Cormorant Garamond',serif; font-size:24px; color:var(--gold);" id="dash-vgl-id">—</div>
+            <div style="font-size:12px; color:var(--muted);" id="dash-title">—</div>
+          </div>
+          <div class="status-pill active" id="dash-status">Active</div>
+        </div>
+        <div id="dash-recipient-timers"></div>
+      </div>
+
+      <!-- Alert log -->
+      <div class="card">
+        <div class="card-title">Alert log</div>
+        <div id="alert-log"></div>
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-danger" onclick="showCancelModal()">Cancel &amp; reseal all timers</button>
+        <button class="btn btn-outline" onclick="showView('create')">Create another Vigil</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     CANCEL MODAL
+═══════════════════════════════════════════ -->
+<div id="cancel-modal" class="modal-overlay">
+  <div class="modal">
+    <h3>Cancel and reseal?</h3>
+    <p>This will immediately reset all recipient timers. The document stays sealed. This cannot be undone — recipients will need to request access again from scratch.</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeCancelModal()">Keep open</button>
+      <button class="btn btn-danger" onclick="cancelVigil()">Cancel &amp; reseal</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ══════════════════════════════════════════════
+//  MOCK STATE
+// ══════════════════════════════════════════════
+const MOCK_VIGIL = {
+  id: 'VGL-A3F92K',
+  title: 'My wishes for my family',
+  owner_email: 'ruben@example.com',
+  body: `To whoever reads this — thank you for waiting.\n\nBy the time you open this, you will know what I wanted to say. I trust you with these words because I trust you with everything.\n\nTake care of each other. That's the only instruction that matters.`,
+  passphrase: 'blue mountain 1987 forever',
+  recipients: [
+    { name: 'Maria', email: 'maria@example.com', requested_at: Date.now() - (18 * 60 * 60 * 1000), timer_done_at: null },
+    { name: 'Jordi', email: 'jordi@example.com', requested_at: null, timer_done_at: null },
+  ]
+};
+
+let state = {
+  vigil: JSON.parse(JSON.stringify(MOCK_VIGIL)),
+  currentRecipientEmail: null,
+  recipients: [],  // for create flow
+  countdownInterval: null,
+  alertLog: [
+    { dot: 'dot-warn', text: 'Maria (maria@example.com) requested access', time: '18 hours ago' },
+    { dot: 'dot-ok',   text: 'Vigil created and sealed', time: '3 days ago' },
+  ]
+};
+
+// ══════════════════════════════════════════════
+//  VIEW ROUTING
+// ══════════════════════════════════════════════
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+
+  if (name === 'dashboard') renderDashboard();
+}
+
+// ══════════════════════════════════════════════
+//  CREATE FLOW
+// ══════════════════════════════════════════════
+function addRecipient() {
+  const name  = document.getElementById('r-name').value.trim();
+  const email = document.getElementById('r-email').value.trim();
+  if (!name || !email) return;
+
+  state.recipients.push({ name, email });
+  document.getElementById('r-name').value  = '';
+  document.getElementById('r-email').value = '';
+  renderRecipientTags();
+}
+
+function removeRecipient(idx) {
+  state.recipients.splice(idx, 1);
+  renderRecipientTags();
+}
+
+function renderRecipientTags() {
+  const list = document.getElementById('recipients-list');
+  list.innerHTML = state.recipients.map((r, i) => `
+    <div class="recipient-tag">
+      <span class="name">${r.name}</span>
+      <span class="email">${r.email}</span>
+      <button class="remove" onclick="removeRecipient(${i})">×</button>
+    </div>
+  `).join('');
+}
+
+function sealVigil() {
+  const title   = document.getElementById('doc-title').value.trim();
+  const body    = document.getElementById('doc-body').value.trim();
+  const email   = document.getElementById('owner-email').value.trim();
+  const pass    = document.getElementById('passphrase').value.trim();
+
+  if (!title || !body || !email || !pass) {
+    alert('Please fill in all fields before sealing.');
+    return;
+  }
+  if (state.recipients.length === 0) {
+    alert('Add at least one recipient.');
+    return;
+  }
+
+  const id = 'VGL-' + Array.from({length:6}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+
+  // Store in mock state
+  state.vigil = {
+    id, title, body, owner_email: email, passphrase: pass,
+    recipients: state.recipients.map(r => ({ ...r, requested_at: null, timer_done_at: null }))
+  };
+
+  document.getElementById('new-vgl-id').textContent = id;
+  document.getElementById('sealed-recipients').textContent = state.recipients.map(r => r.name).join(', ');
+
+  document.getElementById('create-step-write').style.display = 'none';
+  document.getElementById('create-step-sealed').classList.remove('hidden');
+  document.getElementById('create-step-sealed').style.display = 'flex';
+}
+
+// ══════════════════════════════════════════════
+//  OPEN / RECIPIENT FLOW
+// ══════════════════════════════════════════════
+function lookupVigil() {
+  const inputId = document.getElementById('open-vgl-id').value.trim().toUpperCase();
+  const email   = document.getElementById('open-email').value.trim().toLowerCase();
+
+  if (!inputId || !email) { alert('Enter both a Vigil ID and your email.'); return; }
+  if (inputId !== state.vigil.id) { alert('Vigil not found. Check the ID and try again.'); return; }
+
+  const recipient = state.vigil.recipients.find(r => r.email.toLowerCase() === email);
+  if (!recipient) { alert('Your email is not on the authorized list for this Vigil.'); return; }
+
+  state.currentRecipientEmail = email;
+  renderOpenStatus();
+  document.getElementById('open-lookup').classList.add('hidden');
+  document.getElementById('open-status').classList.remove('hidden');
+}
+
+function renderOpenStatus() {
+  const v = state.vigil;
+  document.getElementById('status-vgl-id').textContent = v.id;
+
+  // Render recipient timer rows
+  document.getElementById('recipient-timers').innerHTML = v.recipients.map(r => {
+    let badge, badgeClass;
+    if (!r.requested_at) {
+      badge = 'Waiting'; badgeClass = 'badge-pending';
+    } else if (!r.timer_done_at && (Date.now() - r.requested_at < 24*60*60*1000)) {
+      const remaining = 24*60*60*1000 - (Date.now() - r.requested_at);
+      badge = formatMs(remaining); badgeClass = 'badge-counting';
+    } else {
+      badge = '✓ Ready'; badgeClass = 'badge-done';
+    }
+    return `
+      <div class="recipient-timer">
+        <div><div class="rname">${r.name}</div><div class="remail">${r.email}</div></div>
+        <div class="timer-badge ${badgeClass}">${badge}</div>
+      </div>`;
+  }).join('');
+
+  const me = state.vigil.recipients.find(r => r.email.toLowerCase() === state.currentRecipientEmail);
+
+  // Show appropriate section
+  document.getElementById('request-section').classList.add('hidden');
+  document.getElementById('counting-section').classList.add('hidden');
+  document.getElementById('unlock-section').classList.add('hidden');
+  document.getElementById('document-section').classList.add('hidden');
+
+  const allDone = state.vigil.recipients.every(r => r.requested_at && (r.timer_done_at || (Date.now() - r.requested_at >= 24*60*60*1000)));
+
+  if (allDone) {
+    document.getElementById('unlock-section').classList.remove('hidden');
+  } else if (!me.requested_at) {
+    document.getElementById('request-section').classList.remove('hidden');
+  } else if (!me.timer_done_at) {
+    document.getElementById('counting-section').classList.remove('hidden');
+    startCountdown(me.requested_at);
+  }
+}
+
+function requestAccess() {
+  const me = state.vigil.recipients.find(r => r.email.toLowerCase() === state.currentRecipientEmail);
+  me.requested_at = Date.now();
+
+  // Add to alert log
+  state.alertLog.unshift({ dot: 'dot-warn', text: `${me.name} (${me.email}) requested access`, time: 'Just now' });
+
+  renderOpenStatus();
+  if (document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
+}
+
+function unlockVigil() {
+  const pass = document.getElementById('unlock-passphrase').value.trim();
+  if (pass !== state.vigil.passphrase) {
+    alert('Incorrect passphrase. This was shared with you by the owner — Vigil does not hold it.');
+    return;
+  }
+  document.getElementById('unlock-section').classList.add('hidden');
+  document.getElementById('document-section').classList.remove('hidden');
+  document.getElementById('document-section').style.display = 'block';
+  document.getElementById('revealed-title').textContent = state.vigil.title;
+  document.getElementById('revealed-body').textContent = state.vigil.body;
+}
+
+function startCountdown(requestedAt) {
+  if (state.countdownInterval) clearInterval(state.countdownInterval);
+  function tick() {
+    const remaining = 24*60*60*1000 - (Date.now() - requestedAt);
+    if (remaining <= 0) {
+      clearInterval(state.countdownInterval);
+      document.getElementById('countdown-display').textContent = '00:00:00';
+      return;
+    }
+    document.getElementById('countdown-display').textContent = formatMs(remaining);
+  }
+  tick();
+  state.countdownInterval = setInterval(tick, 1000);
+}
+
+function formatMs(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600).toString().padStart(2, '0');
+  const m = Math.floor((total % 3600) / 60).toString().padStart(2, '0');
+  const s = (total % 60).toString().padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+// ══════════════════════════════════════════════
+//  OWNER DASHBOARD
+// ══════════════════════════════════════════════
+function renderDashboard() {
+  const v = state.vigil;
+  document.getElementById('dash-vgl-id').textContent = v.id;
+  document.getElementById('dash-title').textContent = v.title || '—';
+
+  const anyActive = v.recipients.some(r => r.requested_at && !r.timer_done_at);
+  const banner = document.getElementById('warning-banner');
+  if (anyActive) {
+    banner.classList.remove('hidden');
+    const who = v.recipients.filter(r => r.requested_at).map(r => r.name).join(', ');
+    document.getElementById('warning-detail').textContent = `${who} has requested access. 24-hour window is running.`;
+  } else {
+    banner.classList.add('hidden');
+  }
+
+  // Recipient rows with live timers
+  document.getElementById('dash-recipient-timers').innerHTML = v.recipients.map(r => {
+    let badge, badgeClass;
+    if (!r.requested_at) {
+      badge = 'Not yet requested'; badgeClass = 'badge-pending';
+    } else {
+      const remaining = 24*60*60*1000 - (Date.now() - r.requested_at);
+      if (remaining > 0) { badge = formatMs(remaining); badgeClass = 'badge-counting'; }
+      else { badge = '✓ Complete'; badgeClass = 'badge-done'; }
+    }
+    return `
+      <div class="recipient-timer">
+        <div><div class="rname">${r.name}</div><div class="remail">${r.email}</div></div>
+        <div class="timer-badge ${badgeClass}">${badge}</div>
+      </div>`;
+  }).join('');
+
+  // Alert log
+  document.getElementById('alert-log').innerHTML = state.alertLog.map(e => `
+    <div class="log-entry">
+      <div class="log-dot ${e.dot}"></div>
+      <div><div class="log-text">${e.text}</div><div class="log-time">${e.time}</div></div>
+    </div>
+  `).join('');
+}
+
+// Live dashboard tick
+setInterval(() => {
+  if (document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
+}, 1000);
+
+// ══════════════════════════════════════════════
+//  CANCEL MODAL
+// ══════════════════════════════════════════════
+function showCancelModal() { document.getElementById('cancel-modal').classList.add('open'); }
+function closeCancelModal() { document.getElementById('cancel-modal').classList.remove('open'); }
+
+function cancelVigil() {
+  // Full reset — wipe all timestamps
+  state.vigil.recipients.forEach(r => { r.requested_at = null; r.timer_done_at = null; });
+  state.alertLog.unshift({ dot: 'dot-ok', text: 'Owner cancelled all timers — Vigil resealed', time: 'Just now' });
+  closeCancelModal();
+  renderDashboard();
+}
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+// Simulate Maria's timer already running (18h in, 6h left)
+state.vigil.recipients[0].requested_at = Date.now() - (18 * 60 * 60 * 1000);
+</script>
+</body>
+</html>
