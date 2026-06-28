@@ -930,14 +930,25 @@ async function sealVigil() {
   const encrypted_body  = await encryptDocument(payload, pass);
   const passphrase_hash = await hashPassphrase(pass);
 
-  const id = 'VGL-' + Array.from({length:6}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+  const response = await fetch('/api/vigils', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ owner_email: email, encrypted_body, passphrase_hash, recipients: state.recipients })
+  })
 
-// In production: POST /api/vigils with { id, owner_email, encrypted_body, passphrase_hash, recipients }
+  if (!response.ok) {
+    const err = await response.json()
+    alert('Error creating Vigil: ' + err.error)
+    btn.textContent = '■ Seal my Vigil'; btn.disabled = false
+    return
+  }
+
+  const { id } = await response.json()
   state.vigil = {
     id, owner_email: email, encrypted_body, passphrase_hash,
     recipients: state.recipients.map(r => ({ ...r, requested_at: null, timer_done_at: null }))
-  };
-  state.alertLog = [{ dot: 'dot-ok', text: `Vigil ${id} created and sealed`, time: 'Just now' }];
+  }
+  state.alertLog = [{ dot: 'dot-ok', text: `Vigil ${id} created and sealed`, time: 'Just now' }]
 
   document.getElementById('new-vgl-id').textContent = id;
   document.getElementById('sealed-recipients').textContent = state.recipients.map(r => r.name).join(', ');
