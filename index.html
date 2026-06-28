@@ -932,7 +932,7 @@ async function sealVigil() {
 
   const id = 'VGL-' + Array.from({length:6}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
 
-  // In production: POST /api/vigils with { id, owner_email, encrypted_body, passphrase_hash, recipients }
+// In production: POST /api/vigils with { id, owner_email, encrypted_body, passphrase_hash, recipients }
   state.vigil = {
     id, owner_email: email, encrypted_body, passphrase_hash,
     recipients: state.recipients.map(r => ({ ...r, requested_at: null, timer_done_at: null }))
